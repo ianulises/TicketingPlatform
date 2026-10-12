@@ -1,0 +1,167 @@
+{
+  "info": {
+    "_postman_id": "3a745da9-2e53-4b21-b645-5e058e779245",
+    "name": "TicketingPlatform - Flujo completo",
+    "description": "Pruebas locales de eventos, reservas, pagos, boletos y cancelaciones. Ejecutar en orden con el environment TicketingPlatform Local.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "01 - Health checks",
+      "item": [
+        {
+          "name": "Events health",
+          "request": { "method": "GET", "url": "{{eventsUrl}}/health" },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Events responde 200', () => pm.response.to.have.status(200));"] } }]
+        },
+        {
+          "name": "Bookings health",
+          "request": { "method": "GET", "url": "{{bookingsUrl}}/health" },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Bookings responde 200', () => pm.response.to.have.status(200));"] } }]
+        },
+        {
+          "name": "Payments health",
+          "request": { "method": "GET", "url": "{{paymentsUrl}}/health" },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Payments responde 200', () => pm.response.to.have.status(200));"] } }]
+        }
+      ]
+    },
+    {
+      "name": "02 - Crear evento y consultar disponibilidad",
+      "item": [
+        {
+          "name": "Crear evento",
+          "event": [
+            { "listen": "prerequest", "script": { "exec": ["const runId = Date.now().toString();", "pm.collectionVariables.set('runId', runId);", "pm.collectionVariables.set('bookingKey', 'booking-' + runId);", "pm.collectionVariables.set('paymentKey', 'payment-' + runId);", "pm.collectionVariables.set('refundKey', 'refund-' + runId);"] } },
+            { "listen": "test", "script": { "exec": ["pm.test('Evento creado', () => pm.response.to.have.status(201));", "const body = pm.response.json();", "pm.collectionVariables.set('eventId', body.id);", "pm.collectionVariables.set('seatId', body.zones[0].seats[0].id);", "pm.test('Se guardaron eventId y seatId', () => pm.expect(pm.collectionVariables.get('seatId')).to.be.ok);"] } }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-User-Id", "value": "{{organizerId}}" },
+              { "key": "X-User-Role", "value": "organizer" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Concierto Postman {{runId}}\",\n  \"venue\": \"Foro Central\",\n  \"startsAt\": \"2030-12-20T20:00:00Z\",\n  \"zones\": [\n    {\n      \"name\": \"Platea\",\n      \"price\": 650,\n      \"seatLabels\": [\"A-1\", \"A-2\", \"A-3\"]\n    }\n  ]\n}" },
+            "url": "{{eventsUrl}}/events"
+          }
+        },
+        {
+          "name": "Consultar disponibilidad",
+          "request": { "method": "GET", "url": "{{eventsUrl}}/events/{{eventId}}/availability" },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Disponibilidad consultada', () => pm.response.to.have.status(200));"] } }]
+        }
+      ]
+    },
+    {
+      "name": "03 - Reservar y pagar",
+      "item": [
+        {
+          "name": "Crear reserva",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-User-Id", "value": "{{userId}}" },
+              { "key": "Idempotency-Key", "value": "{{bookingKey}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"eventId\": \"{{eventId}}\",\n  \"seatIds\": [\"{{seatId}}\"]\n}" },
+            "url": "{{bookingsUrl}}/bookings"
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Reserva creada', () => pm.response.to.have.status(201));", "const body = pm.response.json();", "pm.collectionVariables.set('bookingId', body.id);", "pm.test('Precio congelado', () => pm.expect(body.total).to.eql(650));"] } }]
+        },
+        {
+          "name": "Repetir reserva con la misma clave",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-User-Id", "value": "{{userId}}" },
+              { "key": "Idempotency-Key", "value": "{{bookingKey}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"eventId\": \"{{eventId}}\",\n  \"seatIds\": [\"{{seatId}}\"]\n}" },
+            "url": "{{bookingsUrl}}/bookings"
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('La repetición devuelve la misma reserva', () => {", "  pm.response.to.have.status(200);", "  pm.expect(pm.response.json().id).to.eql(pm.collectionVariables.get('bookingId'));", "});"] } }]
+        },
+        {
+          "name": "Solicitar pago",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-User-Id", "value": "{{userId}}" },
+              { "key": "Idempotency-Key", "value": "{{paymentKey}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{}" },
+            "url": "{{bookingsUrl}}/bookings/{{bookingId}}/payments"
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Pago aceptado para procesamiento', () => pm.response.to.have.status(202));"] } }]
+        },
+        {
+          "name": "Consultar reserva después del pago",
+          "description": "El pago es asíncrono. Si se ejecuta manualmente, esperar 2 o 3 segundos antes de enviar esta petición.",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-User-Id", "value": "{{userId}}" }],
+            "url": "{{bookingsUrl}}/bookings/{{bookingId}}"
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["const body = pm.response.json();", "pm.test('Reserva consultada', () => pm.response.to.have.status(200));", "pm.test('Estado de pago válido', () => pm.expect(['PaymentPending', 'Confirmed', 'PaymentRejected']).to.include(body.status));"] } }]
+        },
+        {
+          "name": "Consultar boletos",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-User-Id", "value": "{{userId}}" }],
+            "url": "{{bookingsUrl}}/tickets"
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Boletos consultados', () => pm.response.to.have.status(200));"] } }]
+        }
+      ]
+    },
+    {
+      "name": "04 - Cancelar y verificar reembolso",
+      "item": [
+        {
+          "name": "Solicitar cancelación",
+          "description": "Ejecutar cuando la reserva ya esté Confirmed.",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-User-Id", "value": "{{userId}}" },
+              { "key": "Idempotency-Key", "value": "{{refundKey}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{}" },
+            "url": "{{bookingsUrl}}/bookings/{{bookingId}}/cancel"
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Cancelación aceptada', () => pm.response.to.have.status(202));"] } }]
+        },
+        {
+          "name": "Consultar reserva cancelada",
+          "description": "Esperar 2 o 3 segundos después de solicitar la cancelación.",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-User-Id", "value": "{{userId}}" }],
+            "url": "{{bookingsUrl}}/bookings/{{bookingId}}"
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["const body = pm.response.json();", "pm.test('Estado de reembolso válido', () => pm.expect(['RefundPending', 'RefundFailed', 'Cancelled']).to.include(body.status));"] } }]
+        },
+        {
+          "name": "Verificar asiento liberado",
+          "request": { "method": "GET", "url": "{{eventsUrl}}/events/{{eventId}}/availability" },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Disponibilidad consultada', () => pm.response.to.have.status(200));", "const zones = pm.response.json();", "const seat = zones.flatMap(z => z.seats).find(s => s.id === pm.collectionVariables.get('seatId'));", "pm.test('El asiento se libera tras completar el reembolso', () => {", "  if (seat) pm.expect(seat.available).to.be.a('boolean');", "});"] } }]
+        }
+      ]
+    }
+  ],
+  "variable": [
+    { "key": "eventId", "value": "" },
+    { "key": "seatId", "value": "" },
+    { "key": "bookingId", "value": "" },
+    { "key": "runId", "value": "" },
+    { "key": "bookingKey", "value": "" },
+    { "key": "paymentKey", "value": "" },
+    { "key": "refundKey", "value": "" }
+  ]
+}

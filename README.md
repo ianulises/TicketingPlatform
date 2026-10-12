@@ -78,6 +78,8 @@ El flujo normal de compra debe iniciarse desde Bookings; el endpoint directo de 
 
 ## Ejemplo de flujo
 
+También se incluye una colección importable en `postman/TicketingPlatform.postman_collection.json` y el environment `postman/TicketingPlatform.local.postman_environment.json`. La colección encadena las peticiones guardando automáticamente los identificadores devueltos por cada paso.
+
 Crear un evento:
 
 ```bash
