@@ -1,0 +1,103 @@
+services:
+  events-db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: events
+      POSTGRES_USER: ticketing
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ticketing}
+    ports: ["5433:5432"]
+    volumes: ["events-data:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ticketing -d events"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+  bookings-db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: bookings
+      POSTGRES_USER: ticketing
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ticketing}
+    ports: ["5434:5432"]
+    volumes: ["bookings-data:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ticketing -d bookings"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+  payments-db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: payments
+      POSTGRES_USER: ticketing
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ticketing}
+    ports: ["5435:5432"]
+    volumes: ["payments-data:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ticketing -d payments"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+  rabbitmq:
+    image: rabbitmq:4-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-ticketing}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-ticketing}
+    ports: ["5673:5672", "15673:15672"]
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+  events-api:
+    build:
+      context: .
+      dockerfile: src/Events.Api/Dockerfile
+    ports: ["8081:8080"]
+    environment:
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Database: Host=events-db;Database=events;Username=ticketing;Password=${POSTGRES_PASSWORD:-ticketing}
+      RabbitMq__Host: rabbitmq
+      RabbitMq__Username: ${RABBITMQ_USER:-ticketing}
+      RabbitMq__Password: ${RABBITMQ_PASSWORD:-ticketing}
+    depends_on:
+      events-db: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+    restart: on-failure
+  bookings-api:
+    build:
+      context: .
+      dockerfile: src/Bookings.Api/Dockerfile
+    ports: ["8082:8080"]
+    environment:
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Database: Host=bookings-db;Database=bookings;Username=ticketing;Password=${POSTGRES_PASSWORD:-ticketing}
+      RabbitMq__Host: rabbitmq
+      RabbitMq__Username: ${RABBITMQ_USER:-ticketing}
+      RabbitMq__Password: ${RABBITMQ_PASSWORD:-ticketing}
+    depends_on:
+      bookings-db: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+      events-api: { condition: service_started }
+    restart: on-failure
+  payments-api:
+    build:
+      context: .
+      dockerfile: src/Payments.Api/Dockerfile
+    ports: ["8083:8080"]
+    environment:
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Database: Host=payments-db;Database=payments;Username=ticketing;Password=${POSTGRES_PASSWORD:-ticketing}
+      RabbitMq__Host: rabbitmq
+      RabbitMq__Username: ${RABBITMQ_USER:-ticketing}
+      RabbitMq__Password: ${RABBITMQ_PASSWORD:-ticketing}
+      Gateway__LatencySeconds: ${PAYMENT_LATENCY_SECONDS:-1}
+      Gateway__FailureRate: ${PAYMENT_FAILURE_RATE:-0.10}
+    depends_on:
+      payments-db: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+    restart: on-failure
+volumes:
+  events-data:
+  bookings-data:
+  payments-data:

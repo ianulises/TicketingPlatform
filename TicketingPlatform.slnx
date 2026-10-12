@@ -1,0 +1,14 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Bookings.Api/Bookings.Api.csproj" />
+    <Project Path="src/Contracts/Contracts.csproj" />
+    <Project Path="src/Events.Api/Events.Api.csproj" />
+    <Project Path="src/Payments.Api/Payments.Api.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Bookings.Tests/Bookings.Tests.csproj" />
+    <Project Path="tests/Events.Tests/Events.Tests.csproj" />
+    <Project Path="tests/Integration.Tests/Integration.Tests.csproj" />
+    <Project Path="tests/Payments.Tests/Payments.Tests.csproj" />
+  </Folder>
+</Solution>
